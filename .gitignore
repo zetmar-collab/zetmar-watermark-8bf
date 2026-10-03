@@ -1,0 +1,8 @@
+build/
+tests/out/
+tests/ui/
+*.tmp
+
+sdk/
+dist/
+_docs/

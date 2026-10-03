@@ -1,0 +1,39 @@
+PODPIS (WATERMARK) - wtyczka dla Photoshopa i Photoshop Elements
+Zetmar - Cyfrowy Przyjaciel, zetmar.net.pl
+=================================================================
+
+WYMAGANIA
+- Windows 10/11 64-bit
+- Adobe Photoshop (CC, aktualne wersje) albo Photoshop Elements 2020 i nowszy (64-bit)
+- Obrazy RGB 8 lub 16 bit na kanal
+
+INSTALACJA (sposob 1: instalator)
+1. Zamknij Photoshopa / Elements.
+2. Uruchom ZetmarWatermark_Setup.exe. Instalator sam wykryje zainstalowane programy Adobe
+   i zaproponuje instalacje w kazdym z nich. Odznacz te, w ktorych nie chcesz wtyczki.
+3. Uruchom program ponownie.
+
+INSTALACJA (sposob 2: reczna)
+1. Zamknij Photoshopa / Elements.
+2. Skopiuj plik ZetmarWatermark_64.8bf do folderu wtyczek:
+   Photoshop:           C:\Program Files\Adobe\Adobe Photoshop <wersja>\Plug-ins\
+   Photoshop Elements:  C:\Program Files\Adobe\Photoshop Elements <wersja>\Plug-Ins\
+   (najlepiej do podfolderu Zetmar; wymaga uprawnien administratora)
+   Albo uruchom install.ps1 (PowerShell) - zrobi to automatycznie.
+3. Uruchom program ponownie.
+
+UZYCIE
+1. Utworz pusta, przezroczysta warstwe (Ctrl+Shift+N).
+2. Menu: Filtr > Zetmar > Podpis (Watermark)...
+3. Ustaw tekst lub grafike, pozycje, efekty (obrys, plaskorzezba) i widocznosc. Kliknij OK.
+4. Tryb mieszania i krycie warstwy ustawiasz w panelu Warstwy.
+5. Ctrl+F powtarza filtr z ostatnimi ustawieniami.
+Na warstwie tla wtyczka zapyta, czy nalozyc podpis bezposrednio na te warstwe.
+
+USTAWIENIA I PRESETY
+%APPDATA%\ZetmarWatermark\  (settings.json, folder presets)
+Jezyk (PL/EN) i motyw okna zmienisz w zakladce Ustawienia.
+
+ODINSTALOWANIE
+Ustawienia Windows > Aplikacje > "Podpis (Watermark)" > Odinstaluj,
+albo usun folder Zetmar z folderu wtyczek.

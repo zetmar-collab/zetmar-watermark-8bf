@@ -1,0 +1,39 @@
+SIGNATURE (WATERMARK) - plug-in for Photoshop and Photoshop Elements
+Zetmar - Cyfrowy Przyjaciel, zetmar.net.pl
+=================================================================
+
+REQUIREMENTS
+- Windows 10/11 64-bit
+- Adobe Photoshop (CC, current versions) or Photoshop Elements 2020 or newer (64-bit)
+- RGB images, 8 or 16 bits per channel
+
+INSTALLATION (option 1: installer)
+1. Close Photoshop / Elements.
+2. Run ZetmarWatermark_Setup.exe. It detects the installed Adobe programs and offers to
+   install into each of them. Untick the ones you do not want.
+3. Start the program again.
+
+INSTALLATION (option 2: manual)
+1. Close Photoshop / Elements.
+2. Copy ZetmarWatermark_64.8bf into the plug-ins folder:
+   Photoshop:           C:\Program Files\Adobe\Adobe Photoshop <version>\Plug-ins\
+   Photoshop Elements:  C:\Program Files\Adobe\Photoshop Elements <version>\Plug-Ins\
+   (preferably into a Zetmar subfolder; administrator rights required)
+   Or run install.ps1 (PowerShell) to do it automatically.
+3. Start the program again.
+
+USAGE
+1. Create an empty transparent layer (Ctrl+Shift+N).
+2. Menu: Filter > Zetmar > Signature (Watermark)...
+3. Set text or image, position, effects (stroke, emboss) and visibility. Click OK.
+4. Set the blend mode and opacity in the Layers panel.
+5. Ctrl+F repeats the filter with the last settings.
+On a background layer the plug-in asks whether to apply the signature directly to that layer.
+
+SETTINGS AND PRESETS
+%APPDATA%\ZetmarWatermark\  (settings.json, presets folder)
+Language (PL/EN) and window theme can be changed in the Settings tab.
+
+UNINSTALL
+Windows Settings > Apps > "Signature (Watermark)" > Uninstall,
+or delete the Zetmar folder from the plug-ins folder.
