@@ -224,6 +224,17 @@ bool DeletePreset(const std::wstring& name) {
     return DeleteFileW((PresetsDir() + L"\\" + n + L".json").c_str()) != 0;
 }
 
+bool IsRemoteOrDevicePath(const wchar_t* path) {
+    // \\serwer\udzial, \\?\..., \\.\... oraz //serwer
+    return (path[0] == L'\\' || path[0] == L'/') && (path[1] == L'\\' || path[1] == L'/');
+}
+
+bool PresetExists(const std::wstring& name) {
+    for (const auto& n : ListPresets())
+        if (CompareStringOrdinal(n.c_str(), -1, name.c_str(), -1, TRUE) == CSTR_EQUAL) return true;
+    return false;
+}
+
 bool ExportPresets(const std::wstring& path, int& count) {
     count = 0;
     std::string j = "{\n  \"zetmarPresets\": 1,\n  \"presets\": [";
@@ -262,7 +273,16 @@ int ImportPresets(const std::wstring& path) {
         if (pe == std::string::npos) continue;
         Params p;
         SetDefaults(p);
-        if (FromJson(obj.substr(pb, pe - pb + 1), p) && SavePreset(name, p)) ++imported;
+        if (!FromJson(obj.substr(pb, pe - pb + 1), p)) continue;
+        // Plik z zewnatrz nie moze sklonic wtyczki do otwarcia zasobu sieciowego (UNC) ani urzadzenia:
+        // taka sciezka wyciekaloby dane logowania Windows. Uzytkownik wskaze obraz ponownie.
+        if (IsRemoteOrDevicePath(p.imagePath)) p.imagePath[0] = 0;
+        // Istniejacych presetow nie nadpisujemy po cichu.
+        std::wstring finalName = name;
+        for (int n = 2; PresetExists(finalName) && n < 100; ++n)
+            finalName = name + L" (import " + std::to_wstring(n - 1) + L")";
+        if (PresetExists(finalName)) continue;
+        if (SavePreset(finalName, p)) ++imported;
     }
     return imported;
 }

@@ -44,10 +44,19 @@ void LockParams() {
         return;
     }
     if (!g_fr->parameters) { *g_result = filterBadParameters; return; }
+    // Uchwyt mogl powstac w starszym ukladzie struktury (mniejszy rozmiar): nie wolno pisac poza niego.
+    bool fresh = false;
+    if (g_fr->handleProcs->getSizeProc && g_fr->handleProcs->getSizeProc(g_fr->parameters) < (int32)sizeof(Params)) {
+        if (!g_fr->handleProcs->setSizeProc || g_fr->handleProcs->setSizeProc(g_fr->parameters, (int32)sizeof(Params)) != 0) {
+            *g_result = memFullErr;
+            return;
+        }
+        fresh = true;
+    }
     g_params = (Params*)g_fr->handleProcs->lockProc(g_fr->parameters, TRUE);
     if (!g_params) { *g_result = memFullErr; return; }
     g_paramsLocked = true;
-    if (!IsValid(*g_params)) SetDefaults(*g_params);
+    if (fresh || !IsValid(*g_params)) SetDefaults(*g_params);
 }
 
 void UnlockParams() {

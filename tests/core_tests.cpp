@@ -399,6 +399,20 @@ static void TestPresetBundle() {
     CHECK(LoadPreset(L"_bundle2", rb) && rb.shadowOn == 1 && rb.tileOn == 1);
     DeletePreset(L"_bundle1"); DeletePreset(L"_bundle2");
     CHECK(ImportPresets(L"C:\\nie\\ma\\pliku.zmwpresets") == -1);
+    // Import: sciezka UNC jest czyszczona, a istniejacy preset nie jest nadpisywany
+    {
+        Params u; SetDefaults(u); wcscpy_s(u.imagePath, L"\\\\serwer\\udzial\\logo.png"); u.visibility = 11;
+        CHECK(SavePreset(L"_unc", u));
+        std::wstring p2 = std::wstring(_wgetenv(L"ZETMAR_WM_DATA")) + L"\\unc.zmwpresets";
+        int c2 = 0;
+        CHECK(ExportPresets(p2, c2));
+        CHECK(ImportPresets(p2) >= 1);  // nazwa juz istnieje: powstaje "_unc (import 1)"
+        Params r1, r2;
+        CHECK(LoadPreset(L"_unc", r1) && r1.visibility == 11);
+        CHECK(LoadPreset(L"_unc (import 1)", r2) && r2.imagePath[0] == 0);
+        DeletePreset(L"_unc"); DeletePreset(L"_unc (import 1)");
+        for (auto& n : ListPresets()) if (n.rfind(L"_", 0) == 0) DeletePreset(n);
+    }
     // nazwy zarezerwowane
     CHECK(SanitizePresetName(L"CON").empty() && SanitizePresetName(L"nul.txt").empty() && SanitizePresetName(L"COM3").empty());
     CHECK(!SanitizePresetName(L"Console").empty());
