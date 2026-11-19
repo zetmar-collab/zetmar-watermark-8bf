@@ -25,11 +25,19 @@ struct EmbossSpec {
     float hiOpacity, shOpacity;  // 0..1
 };
 
+struct ShadowSpec {
+    float color[3];
+    float opacity;    // 0..1
+    float angleDeg;   // kierunek swiatla; cien pada w strone przeciwna
+    float distance;   // px
+    float blur;       // px
+};
+
 // Dodatkowy margines (px), jakiego efekty potrzebuja wokol ksztaltu.
-int EffectMargin(const StrokeSpec* stroke, const EmbossSpec* emboss);
+int EffectMargin(const StrokeSpec* stroke, const EmbossSpec* emboss, const ShadowSpec* shadow = nullptr);
 
 // `img` to podpis (premult RGBA) z juz doliczonym marginesem. Kolejnosc jak w Photoshopie:
-// wypelnienie -> rzezba -> obrys (obrys na wierzchu).
-void ApplyEffects(FImage& img, const StrokeSpec* stroke, const EmbossSpec* emboss);
+// wypelnienie -> rzezba -> obrys (obrys na wierzchu); cien lezy pod calosciami.
+void ApplyEffects(FImage& img, const StrokeSpec* stroke, const EmbossSpec* emboss, const ShadowSpec* shadow = nullptr);
 
 }  // namespace wm

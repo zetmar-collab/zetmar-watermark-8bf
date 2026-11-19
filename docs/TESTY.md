@@ -25,3 +25,14 @@ Jeśli coś nie działa: utwórz pusty plik `%APPDATA%\ZetmarWatermark\debug.fla
 - [ ] Presety: zapis, wczytanie, usunięcie. Ctrl+F.
 - [ ] Dokumenty: 800 px, >10 000 px, pionowy/poziomy/kwadratowy; 8 i 16 bit.
 - [ ] Błędne dane: pusty tekst, brak pliku obrazu, nieistniejąca czcionka – komunikat, bez crasha.
+
+## Affinity (nowe w 1.1)
+- [ ] Dodaj folder `C:\Program Files\Common Files\Zetmar\AffinityPlugins` w ustawieniach Affinity (Wtyczki Photoshop), zrestartuj Affinity.
+- [ ] Filtry > Wtyczki > Zetmar > Podpis (Watermark)... – okno się otwiera, podgląd pokazuje zdjęcie (albo komunikat „tylko aktywna warstwa”).
+- [ ] Pusta warstwa + OK: podpis tylko na niej. Warstwa ze zdjęciem: komunikat o warstwie tła albo zapis bezpośrednio.
+- [ ] Jeśli coś nie działa: pusty plik `%APPDATA%\ZetmarWatermark\debug.flag`, powtórz, wyślij `log.txt` (linie `QueryHost:`).
+
+## Nowe funkcje 1.1
+- [ ] Cień: kolor, krycie, kierunek, odległość, rozmycie; razem z obrysem i rzeźbą.
+- [ ] Wzór kafelkowy: odstępy, obrót, przesunięcie co drugiego rzędu; z zaznaczeniem i bez.
+- [ ] Wyrównanie tekstu wielolinijkowego; kolor automatyczny; eksport/import presetów (zakładka Ustawienia).

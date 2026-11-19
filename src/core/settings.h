@@ -26,6 +26,10 @@ std::vector<std::wstring> ListPresets();  // same nazwy (bez .json), posortowane
 bool LoadPreset(const std::wstring& name, Params& out);
 bool SavePreset(const std::wstring& name, const Params& p);
 bool DeletePreset(const std::wstring& name);
+// Eksport wszystkich presetow do jednego pliku i import z takiego pliku.
+// ExportPresets: false, gdy nie ma co eksportowac albo zapis sie nie udal. ImportPresets: liczba wczytanych, -1 = zly plik.
+bool ExportPresets(const std::wstring& path, int& count);
+int ImportPresets(const std::wstring& path);
 // Zamienia znaki niedozwolone w nazwie pliku; pusty wynik => nazwa niepoprawna.
 std::wstring SanitizePresetName(const std::wstring& name);
 

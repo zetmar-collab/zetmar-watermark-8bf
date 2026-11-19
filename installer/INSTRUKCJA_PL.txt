@@ -4,7 +4,7 @@ Zetmar - Cyfrowy Przyjaciel, zetmar.net.pl
 
 WYMAGANIA
 - Windows 10/11 64-bit
-- Adobe Photoshop (CC, aktualne wersje) albo Photoshop Elements 2020 i nowszy (64-bit)
+- Adobe Photoshop (CC, aktualne wersje), Photoshop Elements 2020 i nowszy (64-bit) albo Affinity
 - Obrazy RGB 8 lub 16 bit na kanal
 
 INSTALACJA (sposob 1: instalator)
@@ -21,6 +21,20 @@ INSTALACJA (sposob 2: reczna)
    (najlepiej do podfolderu Zetmar; wymaga uprawnien administratora)
    Albo uruchom install.ps1 (PowerShell) - zrobi to automatycznie.
 3. Uruchom program ponownie.
+
+AFFINITY
+Affinity korzysta z oddzielnego pliku: ZetmarWatermark_Affinity_64.8bf (ta sama wtyczka z innym opisem wtyczki,
+bo Affinity nie czyta opisu w formacie, jakiego uzywaja Photoshop i Elements).
+1. Instalator kopiuje ten plik do C:\Program Files\Common Files\Zetmar\AffinityPlugins.
+2. W Affinity: Ustawienia > Wtyczki Photoshop (Photoshop plugins) > dodaj ten folder > uruchom Affinity ponownie.
+3. Filtr: Filtry > Wtyczki > Zetmar > Podpis (Watermark)...
+Uwaga: wsparcie dla Affinity jest nowe i mniej przetestowane niz dla Photoshopa i Elements.
+W razie problemow utworz pusty plik %APPDATA%\ZetmarWatermark\debug.flag - wtyczka zapisze log.txt.
+
+NOWOSCI W WERSJI 1.1
+- Cien (drop shadow), wzor kafelkowy na calym zdjeciu, wyrownanie tekstu wielolinijkowego
+- Kolor automatyczny (biel/czern wg jasnosci zdjecia), eksport i import presetow
+- Poprawki: stabilnosc przy duzych podpisach, szybszy podglad logo, emoji z odstepem liter
 
 UZYCIE
 1. Utworz pusta, przezroczysta warstwe (Ctrl+Shift+N).

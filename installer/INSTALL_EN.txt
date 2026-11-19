@@ -4,7 +4,7 @@ Zetmar - Cyfrowy Przyjaciel, zetmar.net.pl
 
 REQUIREMENTS
 - Windows 10/11 64-bit
-- Adobe Photoshop (CC, current versions) or Photoshop Elements 2020 or newer (64-bit)
+- Adobe Photoshop (CC, current versions), Photoshop Elements 2020 or newer (64-bit) or Affinity
 - RGB images, 8 or 16 bits per channel
 
 INSTALLATION (option 1: installer)
@@ -21,6 +21,20 @@ INSTALLATION (option 2: manual)
    (preferably into a Zetmar subfolder; administrator rights required)
    Or run install.ps1 (PowerShell) to do it automatically.
 3. Start the program again.
+
+AFFINITY
+Affinity uses a separate file: ZetmarWatermark_Affinity_64.8bf (the same plug-in with a different plug-in
+descriptor, because Affinity does not read the format used by Photoshop and Elements).
+1. The installer copies this file to C:\Program Files\Common Files\Zetmar\AffinityPlugins.
+2. In Affinity: Settings > Photoshop plugins > add that folder > restart Affinity.
+3. Filter: Filters > Plugins > Zetmar > Signature (Watermark)...
+Note: Affinity support is new and less tested than Photoshop and Elements.
+If something goes wrong, create an empty file %APPDATA%\ZetmarWatermark\debug.flag - the plug-in will write log.txt.
+
+WHAT'S NEW IN 1.1
+- Drop shadow, tiled pattern across the whole image, alignment of multi-line text
+- Auto color (white/black by photo brightness), preset export and import
+- Fixes: stability with large signatures, faster logo preview, emoji with letter spacing
 
 USAGE
 1. Create an empty transparent layer (Ctrl+Shift+N).

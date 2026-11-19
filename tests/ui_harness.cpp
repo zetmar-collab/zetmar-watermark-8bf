@@ -71,8 +71,8 @@ static void SaveWindowPng(HWND h, const std::wstring& path) {
 }
 
 static void OnShown(HWND dlg, void*) {
-    const wchar_t* names[] = {L"type", L"position", L"effects", L"visibility", L"settings"};
-    for (int i = 0; i < 5; ++i) {
+    const wchar_t* names[] = {L"type", L"position", L"effects", L"emboss", L"visibility", L"settings"};
+    for (int i = 0; i < 6; ++i) {
         HWND tab = GetDlgItem(dlg, 100 + i);
         SendMessageW(dlg, WM_COMMAND, MAKEWPARAM(100 + i, BN_CLICKED), (LPARAM)tab);
         Sleep(300);

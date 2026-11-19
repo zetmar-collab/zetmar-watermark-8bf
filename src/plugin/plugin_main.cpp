@@ -30,29 +30,42 @@ int16* g_result = nullptr;
 PluginData* g_data = nullptr;
 Params* g_params = nullptr;
 
+// Host bez Handle Suite (nietypowe programy) dostaje statyczny zapas zamiast uchwytu.
+Params g_fallbackParams;
+bool g_fallbackReady = false;
+bool g_paramsLocked = false;  // true = g_params wskazuje na zablokowany uchwyt hosta
+
 void LockParams() {
     g_params = nullptr;
+    g_paramsLocked = false;
+    if (!g_fr->handleProcs) {
+        if (!g_fallbackReady) { SetDefaults(g_fallbackParams); g_fallbackReady = true; }
+        g_params = &g_fallbackParams;
+        return;
+    }
     if (!g_fr->parameters) { *g_result = filterBadParameters; return; }
     g_params = (Params*)g_fr->handleProcs->lockProc(g_fr->parameters, TRUE);
     if (!g_params) { *g_result = memFullErr; return; }
+    g_paramsLocked = true;
     if (!IsValid(*g_params)) SetDefaults(*g_params);
 }
 
 void UnlockParams() {
-    if (g_fr->parameters) g_fr->handleProcs->unlockProc(g_fr->parameters);
+    if (g_fr && g_paramsLocked && g_fr->parameters && g_fr->handleProcs) g_fr->handleProcs->unlockProc(g_fr->parameters);
+    g_paramsLocked = false;
     g_params = nullptr;
 }
 
 void EnsureStorage() {
-    if (!g_fr->parameters) {
+    if (g_fr->handleProcs && !g_fr->parameters) {
         g_fr->parameters = g_fr->handleProcs->newProc((int32)sizeof(Params));
         if (!g_fr->parameters) { *g_result = memFullErr; return; }
         Params* p = (Params*)g_fr->handleProcs->lockProc(g_fr->parameters, TRUE);
         if (p) { SetDefaults(*p); g_fr->handleProcs->unlockProc(g_fr->parameters); }
     }
     if (!g_data) {
-        g_data = new (std::nothrow) PluginData();
-        if (!g_data) *g_result = memFullErr;
+        static PluginData storage;  // jeden egzemplarz na czas zycia biblioteki (host tylko przechowuje wskaznik)
+        g_data = &storage;
     }
 }
 
@@ -108,6 +121,7 @@ void DoStart() {
         p = settings.hasParams ? settings.params : p;
         if (p.useForeColor) p.color = hi.foreColor;
         bool force = false;
+        const int savedDirect = p.direct;  // wymuszenie trybu bezposredniego dotyczy tylko tego uruchomienia
         if (hi.flatLayer && !hi.lockedTransparency) {
             if (ui::ShowChoice(hi.hwnd, T(Str::MsgBackground), T(Str::BtnApplyDirect), T(Str::Cancel), settings) != 1) {
                 *g_result = userCanceledErr;
@@ -133,6 +147,7 @@ void DoStart() {
         Sanitize(p);
         *g_params = p;
         settings.params = p;
+        if (force) settings.params.direct = savedDirect;
         settings.hasParams = true;
         SaveSettings(settings);
         SetLanguage(ResolveLanguage(settings.language));
@@ -211,7 +226,11 @@ DLLExport MACPASCAL void PluginMain(const int16 selector, FilterRecordPtr filter
         }
         UnlockParams();
         *data = (intptr_t)g_data;
+    } catch (const std::bad_alloc&) {
+        UnlockParams();
+        if (result) *result = memFullErr;
     } catch (...) {
+        UnlockParams();
         if (result) *result = -1;
     }
 }

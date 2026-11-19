@@ -27,8 +27,10 @@ target_include_directories(wmcore PUBLIC src)
 target_link_libraries(wmcore PUBLIC gdiplus windowscodecs ole32 shell32)
 
 # ---- Testy
+enable_testing()
 add_executable(wm_tests tests/core_tests.cpp)
 target_link_libraries(wm_tests PRIVATE wmcore)
+add_test(NAME core COMMAND wm_tests ${CMAKE_BINARY_DIR}/test_out)
 
 # ---- Wtyczka .8bf
 option(WM_BUILD_PLUGIN "Buduj wtyczke .8bf" ON)
@@ -54,6 +56,35 @@ target_include_directories(ZetmarWatermark PRIVATE
     ${PS_SDK_DIR}/samplecode/common/includes
 )
 target_link_libraries(ZetmarWatermark PRIVATE wmcore comctl32 comdlg32 uxtheme dwmapi shlwapi)
+
+# Wariant dla Affinity: ten sam kod, ale klasyczny binarny PiPL (Affinity nie czyta PiPL w formacie JSON).
+add_library(ZetmarWatermarkAffinity SHARED
+    src/plugin/plugin_main.cpp
+    src/plugin/apply.cpp
+    src/ui/dialog.cpp
+    src/ui/theme.cpp
+    src/ui/msgbox.cpp
+    res/plugin_affinity.rc
+)
+set_target_properties(ZetmarWatermarkAffinity PROPERTIES
+    OUTPUT_NAME "ZetmarWatermark_Affinity_64"
+    SUFFIX ".8bf"
+    PREFIX ""
+)
+target_include_directories(ZetmarWatermarkAffinity PRIVATE
+    src
+    res
+    ${PS_SDK_DIR}/photoshopapi/photoshop
+    ${PS_SDK_DIR}/photoshopapi/pica_sp
+    ${PS_SDK_DIR}/samplecode/common/includes
+)
+target_link_libraries(ZetmarWatermarkAffinity PRIVATE wmcore comctl32 comdlg32 uxtheme dwmapi shlwapi)
+
+# Testy zapisu do warstwy na atrapie hosta
+add_executable(wm_apply_tests tests/apply_tests.cpp src/plugin/apply.cpp)
+target_include_directories(wm_apply_tests PRIVATE src ${PS_SDK_DIR}/photoshopapi/photoshop ${PS_SDK_DIR}/photoshopapi/pica_sp ${PS_SDK_DIR}/samplecode/common/includes)
+target_link_libraries(wm_apply_tests PRIVATE wmcore)
+add_test(NAME apply COMMAND wm_apply_tests)
 
 # Harness do zrzutow interfejsu (bez Photoshopa)
 add_executable(wm_ui_harness tests/ui_harness.cpp src/ui/dialog.cpp src/ui/theme.cpp src/ui/msgbox.cpp src/plugin/apply.cpp)

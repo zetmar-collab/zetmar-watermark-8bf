@@ -16,7 +16,7 @@ enum BlendMode {
 };
 
 constexpr uint32_t kParamsMagic = 0x57424D5A;  // "ZMBW"
-constexpr uint32_t kParamsVersion = 1;
+constexpr uint32_t kParamsVersion = 2;
 
 struct Params {
     uint32_t magic;
@@ -71,6 +71,19 @@ struct Params {
     double visibility;          // 0..100
     int32_t direct;             // "zastosuj bezposrednio na tej warstwie"
     int32_t blend;              // BlendMode (tylko gdy direct)
+
+    // --- Dodane w wersji 2
+    int32_t textAlign;          // 0 = wg kotwicy, 1 = lewo, 2 = srodek, 3 = prawo
+    int32_t shadowOn;
+    uint32_t shadowColor;
+    double shadowOpacity;       // %
+    double shadowAngle;         // stopnie (kierunek swiatla, jak w rzezbie)
+    double shadowDistance;      // px
+    double shadowBlur;          // px
+    int32_t tileOn;             // wzor kafelkowy na calym obrazie
+    double tileSpacingX, tileSpacingY;  // odstep miedzy kafelkami, px
+    double tileAngle;           // obrot wzoru, stopnie -90..90
+    int32_t tileStagger;        // co drugi rzad przesuniety o pol kafelka
 };
 
 void SetDefaults(Params& p);

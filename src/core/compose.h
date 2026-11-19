@@ -1,6 +1,9 @@
 // Skladanie podpisu: rasteryzacja (tekst / obraz) -> pozycja -> efekty -> widocznosc.
 #pragma once
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "imageops.h"
 #include "params.h"
@@ -23,8 +26,15 @@ public:
     virtual ~Rasterizer() = default;
     // Zwraca obraz, w ktorym liczy sie tylko alfa (kolor ignorowany). false => blad (err opisuje).
     virtual bool RenderText(const TextRequest& req, FImage& out, std::wstring& err) = 0;
-    // Wczytuje obraz do premultiplikowanego RGBA.
-    virtual bool LoadImageFile(const std::wstring& path, FImage& out, std::wstring& err) = 0;
+    // Wczytuje obraz do premultiplikowanego RGBA. Wynik jest wspoldzielony z pamiecia podreczna
+    // (nie kopiujemy duzych obrazow przy kazdym odswiezeniu podgladu). nullptr => blad.
+    virtual std::shared_ptr<const FImage> LoadImageShared(const std::wstring& path, std::wstring& err) = 0;
+    bool LoadImageFile(const std::wstring& path, FImage& out, std::wstring& err) {
+        auto p = LoadImageShared(path, err);
+        if (!p) return false;
+        out = *p;
+        return true;
+    }
 };
 
 struct IRect {
@@ -50,7 +60,9 @@ enum class Status {
 };
 
 struct Rendered {
-    int x0 = 0, y0 = 0;  // lewy-gorny naroznik w ukladzie wspolrzednych obrazu
+    int x0 = 0, y0 = 0;  // lewy-gorny naroznik pierwszej kopii w ukladzie wspolrzednych obrazu
+    // Wszystkie polozenia kopii podpisu (jedna, a w trybie kafelkowym wiele).
+    std::vector<std::pair<int, int>> origins;
     FImage img;          // premult RGBA, widocznosc juz uwzgledniona
 };
 
@@ -60,7 +72,8 @@ struct RenderResult {
     Rendered sig;
 };
 
-constexpr long long kMaxSignaturePixels = 64LL * 1000 * 1000;
+// Limit pikseli pojedynczego podpisu. Bufor float RGBA ma 16 B/px, a efekty dokladaja kilka plaszczyzn.
+constexpr long long kMaxSignaturePixels = 40LL * 1000 * 1000;
 
 // Pozycja lewego-gornego rogu prostokata (bw x bh) wg siatki 3x3, marginesow i offsetu.
 void PlaceBox(const Params& p, const DocContext& ctx, int bw, int bh, int& x, int& y);

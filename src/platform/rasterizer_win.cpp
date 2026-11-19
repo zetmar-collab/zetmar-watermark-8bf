@@ -73,7 +73,7 @@ struct WinRasterizer::Impl {
     // Pamiec podreczna ostatnio wczytanego obrazu.
     std::wstring cachePath;
     FILETIME cacheTime{};
-    FImage cacheImg;
+    std::shared_ptr<const FImage> cacheImg;
 };
 
 WinRasterizer::WinRasterizer() : impl_(new Impl) {}
@@ -128,7 +128,8 @@ bool WinRasterizer::RenderText(const TextRequest& req, FImage& out, std::wstring
                     mg.MeasureString(s.c_str(), (INT)i, &font, big, &fmt, &box);
                     x = box.Width;
                 }
-                L.xs.push_back(x + trk * (float)i);
+                const bool lowHalf = i > 0 && IS_LOW_SURROGATE(s[i]) && IS_HIGH_SURROGATE(s[i - 1]);
+                L.xs.push_back(lowHalf ? -1.0f : x + trk * (float)i);
             }
             if (!s.empty()) {
                 mg.MeasureString(s.c_str(), (INT)s.size(), &font, big, &fmt, &box);
@@ -164,8 +165,10 @@ bool WinRasterizer::RenderText(const TextRequest& req, FImage& out, std::wstring
                 g.DrawString(s.c_str(), (INT)s.size(), &font, PointF(x0, y0), &fmt, &brush);
             } else {
                 for (size_t i = 0; i < s.size(); ++i) {
-                    if (s[i] == L' ') continue;
-                    g.DrawString(&s[i], 1, &font, PointF(x0 + L.xs[i], y0), &fmt, &brush);
+                    if (s[i] == L' ' || L.xs[i] < 0) continue;  // xs < 0: druga polowa pary zastepczej
+                    // Para zastepcza (np. emoji) musi byc rysowana razem, inaczej rozpada sie na dwa znaki.
+                    INT n = (IS_HIGH_SURROGATE(s[i]) && i + 1 < s.size() && IS_LOW_SURROGATE(s[i + 1])) ? 2 : 1;
+                    g.DrawString(&s[i], n, &font, PointF(x0 + L.xs[i], y0), &fmt, &brush);
                 }
             }
         }
@@ -188,14 +191,14 @@ bool WinRasterizer::RenderText(const TextRequest& req, FImage& out, std::wstring
     return true;
 }
 
-bool WinRasterizer::LoadImageFile(const std::wstring& path, FImage& out, std::wstring& err) {
+std::shared_ptr<const FImage> WinRasterizer::LoadImageShared(const std::wstring& path, std::wstring& err) {
     WIN32_FILE_ATTRIBUTE_DATA fad{};
-    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad)) { err = L"file"; return false; }
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad)) { err = L"file"; return nullptr; }
     if (impl_->cachePath == path && CompareFileTime(&impl_->cacheTime, &fad.ftLastWriteTime) == 0 &&
-        !impl_->cacheImg.empty()) {
-        out = impl_->cacheImg;
-        return true;
+        impl_->cacheImg && !impl_->cacheImg->empty()) {
+        return impl_->cacheImg;
     }
+    FImage out;
 
     HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     bool uninit = SUCCEEDED(hrInit);  // S_OK / S_FALSE: trzeba sparowac; RPC_E_CHANGED_MODE: nie
@@ -242,12 +245,11 @@ bool WinRasterizer::LoadImageFile(const std::wstring& path, FImage& out, std::ws
     if (factory) factory->Release();
     if (uninit) CoUninitialize();
 
-    if (ok) {
-        impl_->cachePath = path;
-        impl_->cacheTime = fad.ftLastWriteTime;
-        impl_->cacheImg = out;
-    }
-    return ok;
+    if (!ok) return nullptr;
+    impl_->cacheImg = std::make_shared<const FImage>(std::move(out));
+    impl_->cachePath = path;
+    impl_->cacheTime = fad.ftLastWriteTime;
+    return impl_->cacheImg;
 }
 
 namespace {

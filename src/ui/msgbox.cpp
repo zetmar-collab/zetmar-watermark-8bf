@@ -112,7 +112,7 @@ int Run(HWND parent, const wchar_t* text, const wchar_t* b1, const wchar_t* b2, 
     else { pr = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)}; }
     int x = (pr.left + pr.right - ww) / 2, y = (pr.top + pr.bottom - wh) / 2;
 
-    HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, kClass, T(Str::Title), style, x, y, ww, wh, parent,
+    HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME, kClass, T(Str::Title), style, x, y, ww, wh, parent,
                              nullptr, inst, &st);
     if (!h) { FreeTheme(st.theme); DeleteObject(st.font); return 2; }
     ApplyWindowTheme(h, st.theme.dark);
@@ -127,12 +127,14 @@ int Run(HWND parent, const wchar_t* text, const wchar_t* b1, const wchar_t* b2, 
     ShowWindow(h, SW_SHOW);
     SetForegroundWindow(h);
     MSG msg;
-    while (!st.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    BOOL got = 1;
+    while (!st.done && (got = GetMessageW(&msg, nullptr, 0, 0)) > 0) {
         if (!IsDialogMessageW(h, &msg)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
+    if (!st.done && got == 0) PostQuitMessage((int)msg.wParam);
     if (parent) EnableWindow(parent, TRUE);
     DestroyWindow(h);
     if (parent) SetForegroundWindow(parent);

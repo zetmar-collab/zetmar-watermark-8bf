@@ -66,6 +66,18 @@ void SetDefaults(Params& p) {
     p.visibility = 100;
     p.direct = 0;
     p.blend = kBlendNormal;
+    p.textAlign = 0;
+    p.shadowOn = 0;
+    p.shadowColor = 0x000000;
+    p.shadowOpacity = 60;
+    p.shadowAngle = 120;
+    p.shadowDistance = 4;
+    p.shadowBlur = 4;
+    p.tileOn = 0;
+    p.tileSpacingX = 80;
+    p.tileSpacingY = 80;
+    p.tileAngle = -30;
+    p.tileStagger = 1;
 }
 
 static double Clamp(double v, double lo, double hi) {
@@ -125,6 +137,18 @@ void Sanitize(Params& p) {
     p.visibility = Clamp(p.visibility, 0, 100);
     p.direct = p.direct ? 1 : 0;
     p.blend = ClampI(p.blend, 0, kBlendCount - 1);
+    p.textAlign = ClampI(p.textAlign, 0, 3);
+    p.shadowOn = p.shadowOn ? 1 : 0;
+    p.shadowColor &= 0xFFFFFF;
+    p.shadowOpacity = Clamp(p.shadowOpacity, 0, 100);
+    p.shadowAngle = Clamp(p.shadowAngle, 0, 360);
+    p.shadowDistance = Clamp(p.shadowDistance, 0, 200);
+    p.shadowBlur = Clamp(p.shadowBlur, 0, 100);
+    p.tileOn = p.tileOn ? 1 : 0;
+    p.tileSpacingX = Clamp(p.tileSpacingX, -500, 5000);
+    p.tileSpacingY = Clamp(p.tileSpacingY, -500, 5000);
+    p.tileAngle = Clamp(p.tileAngle, -90, 90);
+    p.tileStagger = p.tileStagger ? 1 : 0;
 }
 
 bool IsValid(const Params& p) { return p.magic == kParamsMagic && p.version == kParamsVersion; }
@@ -240,6 +264,18 @@ void Visit(Params& p, V& v) {
     v("visibility", p.visibility);
     v("direct", p.direct);
     v("blend", p.blend);
+    v("textAlign", p.textAlign);
+    v("shadowOn", p.shadowOn);
+    v.color("shadowColor", p.shadowColor);
+    v("shadowOpacity", p.shadowOpacity);
+    v("shadowAngle", p.shadowAngle);
+    v("shadowDistance", p.shadowDistance);
+    v("shadowBlur", p.shadowBlur);
+    v("tileOn", p.tileOn);
+    v("tileSpacingX", p.tileSpacingX);
+    v("tileSpacingY", p.tileSpacingY);
+    v("tileAngle", p.tileAngle);
+    v("tileStagger", p.tileStagger);
 }
 
 // Minimalny parser plaskiego obiektu JSON {"k": "str" | liczba | true | false, ...}

@@ -5,6 +5,7 @@
 #include <wincodec.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -328,6 +329,95 @@ static void TestSettings() {
     CHECK(SanitizePresetName(L"  ").empty());
 }
 
+static void TestNewFeatures(WinRasterizer& ras) {
+    DocContext ctx;
+    ctx.docW = 900; ctx.docH = 400;
+    ctx.ref = {0, 0, 900, 400};
+
+    // cien: powieksza obwiednie i jest pod napisem
+    Params p = TextParams();
+    RenderResult plain = RenderSignature(p, ctx, ras);
+    Params ps = p; ps.shadowOn = 1; ps.shadowDistance = 10; ps.shadowBlur = 6; ps.shadowOpacity = 80;
+    RenderResult sh = RenderSignature(ps, ctx, ras);
+    CHECK(sh.status == Status::Ok && sh.sig.img.w > plain.sig.img.w && sh.sig.img.h > plain.sig.img.h);
+    SavePng(L"text_shadow.png", sh.sig.img, true);
+    // Cien nie moze zmienic koloru pikseli, ktore sa w pelni kryte przez napis
+    {
+        long long full = 0, wrong = 0;
+        const int dx = (plain.sig.x0 - sh.sig.x0), dy = (plain.sig.y0 - sh.sig.y0);
+        for (int y = 0; y < plain.sig.img.h; ++y)
+            for (int x = 0; x < plain.sig.img.w; ++x) {
+                const float* a = plain.sig.img.px(x, y);
+                const float* b = sh.sig.img.px(x + dx, y + dy);
+                if (a[3] > 0.999f) { ++full; if (std::fabs(a[0] - b[0]) > 1e-4f || std::fabs(b[3] - 1.0f) > 1e-4f) ++wrong; }
+            }
+        CHECK(full > 100 && wrong == 0);
+    }
+
+    // wyrownanie tekstu wieloliniowego: lewo vs prawo daje rozne obrazy tej samej wielkosci
+    Params pa = TextParams();
+    wcscpy_s(pa.text, L"Dlugi napis\nkrotki");
+    pa.textAlign = 1;
+    RenderResult al = RenderSignature(pa, ctx, ras);
+    pa.textAlign = 3;
+    RenderResult ar = RenderSignature(pa, ctx, ras);
+    CHECK(al.status == Status::Ok && ar.status == Status::Ok && std::abs(al.sig.img.w - ar.sig.img.w) <= 3);
+    CHECK(Hash(al.sig.img) != Hash(ar.sig.img));
+
+    // kafelki: pozycje w obrebie obszaru, liczba rosnie wraz ze zmniejszaniem odstepu
+    Params pt = TextParams();
+    pt.sizeValue = 30; pt.tileOn = 1; pt.tileSpacingX = 80; pt.tileSpacingY = 80; pt.tileAngle = -30;
+    RenderResult t1 = RenderSignature(pt, ctx, ras);
+    pt.tileSpacingX = 20; pt.tileSpacingY = 20;
+    RenderResult t2 = RenderSignature(pt, ctx, ras);
+    CHECK(t1.status == Status::Ok && t2.status == Status::Ok);
+    CHECK(t1.sig.origins.size() > 5 && t2.sig.origins.size() > t1.sig.origins.size());
+    // powtarzalnosc
+    RenderResult t3 = RenderSignature(pt, ctx, ras);
+    CHECK(t3.sig.origins == t2.sig.origins && Hash(t3.sig.img) == Hash(t2.sig.img));
+
+    // emoji z odstepem liter nie moze sie rozpadac (brak crasha i niepusty wynik)
+    Params pe = TextParams();
+    wcscpy_s(pe.text, L"A \xD83D\xDE00 B");
+    pe.tracking = 200;
+    CHECK(RenderSignature(pe, ctx, ras).status == Status::Ok);
+}
+
+static void TestPresetBundle() {
+    SetDefaults(*(new Params));  // sprawdzenie, ze SetDefaults nie zalezy od stanu
+    Params a; SetDefaults(a); a.visibility = 33; wcscpy_s(a.text, L"a } \"x\" b");
+    Params b; SetDefaults(b); b.shadowOn = 1; b.tileOn = 1;
+    CHECK(SavePreset(L"_bundle1", a) && SavePreset(L"_bundle2", b));
+    std::wstring path = std::wstring(_wgetenv(L"ZETMAR_WM_DATA")) + L"\\bundle.zmwpresets";
+    int n = 0;
+    CHECK(ExportPresets(path, n) && n >= 2);
+    CHECK(DeletePreset(L"_bundle1") && DeletePreset(L"_bundle2"));
+    int imp = ImportPresets(path);
+    CHECK(imp >= 2);
+    Params ra, rb;
+    CHECK(LoadPreset(L"_bundle1", ra) && ra.visibility == 33 && wcscmp(ra.text, a.text) == 0);
+    CHECK(LoadPreset(L"_bundle2", rb) && rb.shadowOn == 1 && rb.tileOn == 1);
+    DeletePreset(L"_bundle1"); DeletePreset(L"_bundle2");
+    CHECK(ImportPresets(L"C:\\nie\\ma\\pliku.zmwpresets") == -1);
+    // nazwy zarezerwowane
+    CHECK(SanitizePresetName(L"CON").empty() && SanitizePresetName(L"nul.txt").empty() && SanitizePresetName(L"COM3").empty());
+    CHECK(!SanitizePresetName(L"Console").empty());
+}
+
+static void TestSettingsCorrupt() {
+    std::wstring dir = _wgetenv(L"ZETMAR_WM_DATA");
+    std::wstring file = dir + L"\\settings.json";
+    const char* bad[] = {"", "{", "not json", "{\"language\": 7, \"theme\": -3, \"params\": {\"visibility\": 5000}}",
+                         "{\"params\": {\"text\": \"unterminated"};
+    for (const char* b : bad) {
+        HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        DWORD w; WriteFile(h, b, (DWORD)strlen(b), &w, nullptr); CloseHandle(h);
+        AppSettings s = LoadSettings();  // nie moze sie wysypac
+        CHECK(s.language >= 0 && s.language <= 2 && s.theme >= 0 && s.theme <= 2);
+        CHECK(!s.hasParams || (s.params.visibility >= 0 && s.params.visibility <= 100));
+    }
+}
+
 static void TestI18n() {
     SetLanguage(Lang::Polish);
     CHECK(std::wstring(T(Str::Cancel)) == L"Anuluj");
@@ -345,16 +435,28 @@ static void TestI18n() {
 int wmain(int argc, wchar_t** argv) {
     if (argc > 1) g_out = argv[1];
     CreateDirectoryW(g_out.c_str(), nullptr);
+    // Testy nie dotykaja prawdziwych ustawien uzytkownika: katalog danych jest tymczasowy.
+    {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        std::wstring d = std::wstring(tmp) + L"wm_test_data_" + std::to_wstring(GetCurrentProcessId());
+        CreateDirectoryW(d.c_str(), nullptr);
+        SetEnvironmentVariableW(L"ZETMAR_WM_DATA", d.c_str());
+        _wputenv_s(L"ZETMAR_WM_DATA", d.c_str());
+    }
     TestParams();
     TestPlacement();
     TestBlend();
     TestResizeRotate();
     TestI18n();
     TestSettings();
+    TestPresetBundle();
+    TestSettingsCorrupt();
     {
         WinRasterizer ras;
         TestRender(ras);
         TestImage(ras);
+        TestNewFeatures(ras);
     }
     std::printf("\nOK: %d, FAIL: %d\n", g_ok, g_fail);
     return g_fail ? 1 : 0;

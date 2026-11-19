@@ -14,7 +14,7 @@ public:
     ~WinRasterizer() override;
 
     bool RenderText(const TextRequest& req, FImage& out, std::wstring& err) override;
-    bool LoadImageFile(const std::wstring& path, FImage& out, std::wstring& err) override;
+    std::shared_ptr<const FImage> LoadImageShared(const std::wstring& path, std::wstring& err) override;
 
 private:
     struct Impl;

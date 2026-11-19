@@ -22,11 +22,43 @@ inline void OverPremult(float* dst, const float* srcRGB, float a) {
 
 }  // namespace
 
-int EffectMargin(const StrokeSpec* stroke, const EmbossSpec* emboss) {
+int EffectMargin(const StrokeSpec* stroke, const EmbossSpec* emboss, const ShadowSpec* shadow) {
     float m = 0;
     if (stroke) m = std::max(m, stroke->width);
     if (emboss) m = std::max(m, emboss->size + emboss->soften * 3.0f);
+    // Cien lezy pod obrysem/rzezba, wiec jego zasieg liczy sie od ich zewnetrznej krawedzi.
+    if (shadow) m = std::max(m, m + shadow->distance + shadow->blur * 1.5f);
     return (int)std::ceil(m) + 2;
+}
+
+static void ApplyShadow(FImage& img, const ShadowSpec& s) {
+    if (s.opacity <= 0.0f) return;
+    const int w = img.w, h = img.h;
+    const double ang = s.angleDeg * kPi / 180.0;
+    const int dx = (int)std::lround(-std::cos(ang) * s.distance);
+    const int dy = (int)std::lround(std::sin(ang) * s.distance);
+    Mask m(w, h);
+    for (int y = 0; y < h; ++y) {
+        const int sy = y - dy;
+        if (sy < 0 || sy >= h) continue;
+        for (int x = 0; x < w; ++x) {
+            const int sx = x - dx;
+            if (sx < 0 || sx >= w) continue;
+            m.at(x, y) = img.px(sx, sy)[3];
+        }
+    }
+    GaussianBlur(m, s.blur * 0.5);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            float a = Clamp01(m.at(x, y) * s.opacity);
+            if (a <= 0.0f) continue;
+            float* p = img.px(x, y);
+            float inv = 1.0f - p[3];
+            p[0] += s.color[0] * a * inv;
+            p[1] += s.color[1] * a * inv;
+            p[2] += s.color[2] * a * inv;
+            p[3] += a * inv;
+        }
 }
 
 static void ApplyEmboss(FImage& img, const Mask& alpha, const Mask& sd, const EmbossSpec& e) {
@@ -111,12 +143,15 @@ static void ApplyStroke(FImage& img, const Mask& sd, const StrokeSpec& s) {
     }
 }
 
-void ApplyEffects(FImage& img, const StrokeSpec* stroke, const EmbossSpec* emboss) {
-    if (img.empty() || (!stroke && !emboss)) return;
-    Mask alpha = AlphaOf(img);  // ksztalt wejsciowy, przed jakimkolwiek efektem
-    Mask sd = SignedDistance(alpha);
-    if (emboss) ApplyEmboss(img, alpha, sd, *emboss);
-    if (stroke) ApplyStroke(img, sd, *stroke);
+void ApplyEffects(FImage& img, const StrokeSpec* stroke, const EmbossSpec* emboss, const ShadowSpec* shadow) {
+    if (img.empty() || (!stroke && !emboss && !shadow)) return;
+    if (stroke || emboss) {
+        Mask alpha = AlphaOf(img);  // ksztalt wejsciowy, przed jakimkolwiek efektem
+        Mask sd = SignedDistance(alpha);
+        if (emboss) ApplyEmboss(img, alpha, sd, *emboss);
+        if (stroke) ApplyStroke(img, sd, *stroke);
+    }
+    if (shadow) ApplyShadow(img, *shadow);
 }
 
 }  // namespace wm

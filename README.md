@@ -1,6 +1,6 @@
 # Zetmar Podpis (Watermark) – wtyczka .8bf dla Photoshopa i Photoshop Elements
 
-Filtr nakłada podpis tekstowy lub graficzny (z obrysem i płaskorzeźbą) na **aktywną warstwę**.
+Filtr nakłada podpis tekstowy lub graficzny (z obrysem, płaskorzeźbą, cieniem i opcjonalnym wzorem kafelkowym) na **aktywną warstwę**. Działa w Photoshopie, Photoshop Elements i (osobny plik) w Affinity.
 Menu: **Filtr → Zetmar → Podpis (Watermark)…**. Specyfikacja: `SPECYFIKACJA_Watermark_8bf.md`.
 
 ## Jak używać
@@ -14,6 +14,14 @@ Menu: **Filtr → Zetmar → Podpis (Watermark)…**. Specyfikacja: `SPECYFIKACJ
 Na warstwie tła (bez przezroczystości) wtyczka pyta, czy zastosować podpis bezpośrednio (destrukcyjnie, z własnym trybem mieszania z zakładki Widoczność).
 
 Obsługiwane: RGB 8 i 16 bit. Pozostałe tryby są w menu wyszarzone.
+
+## Affinity
+
+Affinity czyta tylko klasyczny, binarny opis wtyczki (PiPL), a Photoshop i Elements opis w JSON. Dlatego budowane są **dwa pliki**:
+`ZetmarWatermark_64.8bf` (Photoshop, Elements) i `ZetmarWatermark_Affinity_64.8bf` (Affinity). Instalator kopiuje wariant Affinity
+do `C:\Program Files\Common Files\Zetmar\AffinityPlugins`; ten folder trzeba dodać w ustawieniach Affinity (Wtyczki Photoshop).
+Opis binarny generuje `tools/make_pipl.py` (`--selftest` porównuje wynik bajt w bajt z działającym PiPL innego filtra Zetmar).
+Wsparcie dla Affinity jest nowe: log diagnostyczny (`debug.flag`) pokaże, co zgłasza host.
 
 ## Instalacja
 
@@ -34,6 +42,8 @@ Adobe Photoshop SDK (nagłówki z https://github.com/AdobeDocs/photoshop-cpp-sdk
 ```
 build.cmd                 # buduje wszystko (Release x64) do build\
 build.cmd wm_tests        # tylko testy rdzenia
+build\wm_tests.exe       # testy rdzenia (ustawienia w katalogu tymczasowym)
+build\wm_apply_tests.exe  # testy zapisu do warstwy na atrapie hosta (8/16 bit, kafelki, zaznaczenie)
 ```
 
 Ścieżkę SDK zmienia zmienna CMake `PS_SDK_DIR` (domyślnie `sdk/pluginsdk`).

@@ -1,6 +1,6 @@
 ﻿; Instalator wtyczki Podpis (Watermark). Budowanie: ISCC.exe installer\ZetmarWatermark.iss
 #define AppName "Podpis (Watermark) / Signature (Watermark)"
-#define AppVer "1.0.0"
+#define AppVer "1.1.0"
 
 [Setup]
 AppId={{7A1F3C52-5B1E-4D0C-9E55-5A7B2C0E4D11}
@@ -34,6 +34,8 @@ polish.ManualHint=Wybierz folder Plug-ins (lub Plug-Ins) programu Photoshop / Ph
 polish.NothingSelected=Zaznacz co najmniej jeden program.
 polish.CopyFail=Nie udało się skopiować wtyczki do:
 polish.Docs=Instrukcja instalacji i użycia
+polish.AffinityItem=Affinity (folder wtyczek do dodania w ustawieniach Affinity)
+polish.AffinityInfo=Wtyczka dla Affinity została skopiowana do:%n%n%1%n%nW Affinity otwórz Ustawienia > Wtyczki Photoshop (Photoshop plugins), dodaj powyższy folder i uruchom Affinity ponownie. Filtr znajdziesz w menu Filtry > Wtyczki > Zetmar.
 english.PageTitle=Choose Adobe programs
 english.PageDesc=The plug-in will be installed into the selected programs.
 english.ManualTitle=Plug-ins folder
@@ -42,9 +44,12 @@ english.ManualHint=Choose the Plug-ins (or Plug-Ins) folder of Photoshop / Photo
 english.NothingSelected=Select at least one program.
 english.CopyFail=Could not copy the plug-in to:
 english.Docs=Installation and usage guide
+english.AffinityItem=Affinity (plug-ins folder to add in the Affinity settings)
+english.AffinityInfo=The plug-in for Affinity was copied to:%n%n%1%n%nIn Affinity open Settings > Photoshop plug-ins, add the folder above and restart Affinity. The filter appears under Filters > Plugins > Zetmar.
 
 [Files]
 Source: "..\build\ZetmarWatermark_64.8bf"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\ZetmarWatermark_Affinity_64.8bf"; DestDir: "{app}"; Flags: ignoreversion
 Source: "INSTRUKCJA_PL.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "INSTALL_EN.txt"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -58,6 +63,7 @@ var
   Checks: TNewCheckListBox;
   ManualPage: TInputDirWizardPage;
   Paths: TStringList;
+  Kinds: TStringList;      // "A" = Adobe, "F" = Affinity (wariant z klasycznym PiPL)
   Installed: string;
 
 procedure AddPluginsDir(const Root, Caption: string);
@@ -70,7 +76,27 @@ begin
   begin
     Checks.AddCheckBox(Caption + '  (' + P + ')', '', 0, True, True, False, True, nil);
     Paths.Add(P);
+    Kinds.Add('A');
   end;
+end;
+
+function AffinityInstalled: Boolean;
+var
+  FR: TFindRec;
+begin
+  Result := False;
+  if FindFirst(ExpandConstant('{localappdata}\Packages\*Affinity*'), FR) then
+  begin
+    Result := True;
+    FindClose(FR);
+  end;
+  if not Result then
+    Result := DirExists(ExpandConstant('{commonpf64}\Affinity')) or DirExists(ExpandConstant('{commonpf64}\Affinity\Affinity'));
+end;
+
+function AffinityFolder: string;
+begin
+  Result := ExpandConstant('{commoncf64}\Zetmar\AffinityPlugins');
 end;
 
 procedure ScanAdobe(const Base: string);
@@ -96,6 +122,7 @@ end;
 procedure InitializeWizard;
 begin
   Paths := TStringList.Create;
+  Kinds := TStringList.Create;
   ListPage := CreateCustomPage(wpWelcome, CustomMessage('PageTitle'), CustomMessage('PageDesc'));
   Checks := TNewCheckListBox.Create(ListPage);
   Checks.Parent := ListPage.Surface;
@@ -105,6 +132,12 @@ begin
   Checks.Height := ListPage.SurfaceHeight;
   ScanAdobe(ExpandConstant('{commonpf64}\Adobe'));
   ScanAdobe(ExpandConstant('{commonpf32}\Adobe'));
+  if AffinityInstalled then
+  begin
+    Checks.AddCheckBox(CustomMessage('AffinityItem') + '  (' + AffinityFolder + ')', '', 0, True, True, False, True, nil);
+    Paths.Add(AffinityFolder);
+    Kinds.Add('F');
+  end;
 
   ManualPage := CreateInputDirPage(ListPage.ID, CustomMessage('ManualTitle'), CustomMessage('ManualDesc'),
     CustomMessage('ManualHint'), False, '');
@@ -148,33 +181,53 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   I: Integer;
-  Dst, Src: string;
+  Dst, Src, SrcAff, AffDir: string;
   Targets: TStringList;
+  Kind: string;
 begin
   if CurStep <> ssPostInstall then Exit;
   Src := ExpandConstant('{app}\ZetmarWatermark_64.8bf');
+  SrcAff := ExpandConstant('{app}\ZetmarWatermark_Affinity_64.8bf');
   Targets := TStringList.Create;
   try
     if Paths.Count > 0 then
     begin
       for I := 0 to Paths.Count - 1 do
-        if Checks.Checked[I] then Targets.Add(Paths[I]);
+        if Checks.Checked[I] then Targets.Add(Kinds[I] + Paths[I]);
     end
     else
-      Targets.Add(ManualPage.Values[0]);
+      Targets.Add('A' + ManualPage.Values[0]);
     for I := 0 to Targets.Count - 1 do
     begin
-      Dst := Targets[I] + '\Zetmar';
-      ForceDirectories(Dst);
-      if FileCopy(Src, Dst + '\ZetmarWatermark_64.8bf', False) then
-        Installed := Installed + Dst + ';'
+      Kind := Copy(Targets[I], 1, 1);
+      if Kind = 'F' then
+      begin
+        Dst := Copy(Targets[I], 2, MaxInt);
+        ForceDirectories(Dst);
+        if FileCopy(SrcAff, Dst + '\ZetmarWatermark_Affinity_64.8bf', False) then
+        begin
+          Installed := Installed + Dst + ';';
+          AffDir := Dst;
+        end
+        else
+          MsgBox(CustomMessage('CopyFail') + #13#10 + Dst, mbError, MB_OK);
+      end
       else
-        MsgBox(CustomMessage('CopyFail') + #13#10 + Dst, mbError, MB_OK);
+      begin
+        Dst := Copy(Targets[I], 2, MaxInt) + '\Zetmar';
+        ForceDirectories(Dst);
+        if FileCopy(Src, Dst + '\ZetmarWatermark_64.8bf', False) then
+          Installed := Installed + Dst + ';'
+        else
+          MsgBox(CustomMessage('CopyFail') + #13#10 + Dst, mbError, MB_OK);
+      end;
     end;
   finally
     Targets.Free;
   end;
   RegWriteStringValue(HKLM, 'Software\Zetmar\Watermark', 'Targets', Installed);
+  if AffDir <> '' then
+    MsgBox(FmtMessage(CustomMessage('AffinityInfo'), [AffDir]), mbInformation, MB_OK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -201,6 +254,7 @@ begin
       if D <> '' then
       begin
         DeleteFile(D + '\ZetmarWatermark_64.8bf');
+        DeleteFile(D + '\ZetmarWatermark_Affinity_64.8bf');
         RemoveDir(D);
       end;
     end;

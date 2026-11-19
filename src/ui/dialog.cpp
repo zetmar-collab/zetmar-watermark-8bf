@@ -3,6 +3,7 @@
 
 #include <commctrl.h>
 #include <commdlg.h>
+#include <shellapi.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -27,7 +28,7 @@ const wchar_t kMainClass[] = L"ZetmarWmMain";
 const wchar_t kPreviewClass[] = L"ZetmarWmPreview";
 const UINT_PTR kPreviewTimer = 1;
 
-enum Page { kPageType = 0, kPagePosition, kPageEffects, kPageVisibility, kPageSettings, kPageCount };
+enum Page { kPageType = 0, kPagePosition, kPageEffects, kPageEmboss, kPageVisibility, kPageSettings, kPageCount };
 // group: 0 = zawsze na stronie; 1 = tylko tryb tekstu; 2 = tylko tryb grafiki
 enum Group { kGAlways = 0, kGText = 1, kGImage = 2 };
 
@@ -36,7 +37,7 @@ enum class Kind { Label, Edit, MultiEdit, Check, Radio, Push, Swatch, Combo, Sli
 enum Ids {
     IDC_TAB0 = 100,        // ..104
     IDC_OKB = 110, IDC_CANCELB, IDC_RESETB,
-    IDC_BROWSE = 120, IDC_USEFORE, IDC_PRESET_COMBO, IDC_PRESET_LOAD, IDC_PRESET_SAVE, IDC_PRESET_DEL,
+    IDC_BROWSE = 120, IDC_USEFORE, IDC_AUTOCOLOR, IDC_PRESET_EXPORT, IDC_PRESET_IMPORT, IDC_WEBSITE, IDC_PRESET_COMBO, IDC_PRESET_LOAD, IDC_PRESET_SAVE, IDC_PRESET_DEL,
     IDC_LANG, IDC_THEME, IDC_SLIDER, IDC_FONT, IDC_TEXT, IDC_IMGPATH, IDC_PRESET_NAME,
     IDC_DYNAMIC = 1000,
 };
@@ -123,6 +124,7 @@ private:
     void BuildTypePage(int labelW);
     void BuildPositionPage(int labelW);
     void BuildEffectsPage(int labelW);
+    void BuildEmbossPage(int labelW);
     void BuildVisibilityPage(int labelW);
     void BuildSettingsPage(int labelW);
 
@@ -155,6 +157,9 @@ private:
     void PresetLoad();
     void PresetSave();
     void PresetDelete();
+    void PresetExportAll();
+    void PresetImportAll();
+    void AutoColor();
     void Finish(bool ok);
 
     // --- podglad
@@ -199,6 +204,7 @@ private:
     POINT dragStart_{};
     double dragPanX_ = 0, dragPanY_ = 0;
     bool renderBusy_ = false;
+    RECT lastSigRect_{};  // obwiednia podpisu w podgladzie (dla koloru automatycznego)
 };
 
 // ----------------------------------------------------------------------------------------------
@@ -344,6 +350,9 @@ void Dialog::BuildTypePage(int lw) {
     AddLabel(kPageType, kGText, P, y, Str::LineSpacing, lw);
     AddEdit(kPageType, kGText, fx, y, S(80), &Params::lineSpacing, 0);
     y += RH;
+    AddLabel(kPageType, kGText, P, y, Str::TextAlign, lw);
+    AddCombo(kPageType, kGText, fx, y, fw, &Params::textAlign, {Str::AlignAuto, Str::AlignLeft, Str::AlignCenter, Str::AlignRight});
+    y += RH;
 
     // --- grafika (ten sam obszar co tekst; widoczne naprzemiennie)
     int yi = S(8) + RH;
@@ -377,6 +386,7 @@ void Dialog::BuildTypePage(int lw) {
     AddLabel(kPageType, kGAlways, P, yc, Str::Color, lw);
     AddSwatch(kPageType, kGAlways, fx, yc, S(60), &Params::color);
     AddPush(kPageType, kGAlways, fx + S(70), yc, fw - S(70), S(26), IDC_USEFORE, Str::UseForeColor);
+    AddPush(kPageType, kGAlways, fx, yc + RH, fw, S(26), IDC_AUTOCOLOR, Str::AutoColor);
 }
 
 void Dialog::BuildPositionPage(int lw) {
@@ -408,6 +418,19 @@ void Dialog::BuildPositionPage(int lw) {
     AddEdit(kPagePosition, kGAlways, fx, y, S(80), &Params::offsetY, 0);
     y += RH + S(6);
     AddCheck(kPagePosition, kGAlways, P, y, panelW_ - 2 * P, Str::RelSelection, &Params::relToSelection, 4);
+    y += RH + S(10);
+    AddCheck(kPagePosition, kGAlways, P, y, panelW_ - 2 * P, Str::TileOn, &Params::tileOn);
+    y += RH;
+    AddLabel(kPagePosition, kGAlways, P, y, Str::TileSpacingX, lw).enableRule = 9;
+    AddEdit(kPagePosition, kGAlways, fx, y, S(80), &Params::tileSpacingX, 0, 9);
+    y += RH;
+    AddLabel(kPagePosition, kGAlways, P, y, Str::TileSpacingY, lw).enableRule = 9;
+    AddEdit(kPagePosition, kGAlways, fx, y, S(80), &Params::tileSpacingY, 0, 9);
+    y += RH;
+    AddLabel(kPagePosition, kGAlways, P, y, Str::TileAngle, lw).enableRule = 9;
+    AddEdit(kPagePosition, kGAlways, fx, y, S(80), &Params::tileAngle, 0, 9);
+    y += RH;
+    AddCheck(kPagePosition, kGAlways, P, y, panelW_ - 2 * P, Str::TileStagger, &Params::tileStagger, 9);
 }
 
 void Dialog::BuildEffectsPage(int lw) {
@@ -429,6 +452,26 @@ void Dialog::BuildEffectsPage(int lw) {
     AddEdit(pg, kGAlways, fx, y, S(80), &Params::strokeOpacity, 0, 1);
     y += RH + S(8);
 
+    AddCheck(pg, kGAlways, P, y, panelW_ - 2 * P, Str::ShadowFx, &Params::shadowOn);
+    y += RH;
+    AddLabel(pg, kGAlways, P, y, Str::ShadowFxColor, lw).enableRule = 8;
+    AddSwatch(pg, kGAlways, fx, y, S(60), &Params::shadowColor, 8);
+    y += RH;
+    struct { Str k; double Params::*f; } shRows[] = {{Str::Opacity, &Params::shadowOpacity},
+                                                     {Str::ShadowFxAngle, &Params::shadowAngle},
+                                                     {Str::ShadowFxDistance, &Params::shadowDistance},
+                                                     {Str::ShadowFxBlur, &Params::shadowBlur}};
+    for (auto& r : shRows) {
+        AddLabel(pg, kGAlways, P, y, r.k, lw).enableRule = 8;
+        AddEdit(pg, kGAlways, fx, y, S(80), r.f, 0, 8);
+        y += RH;
+    }
+}
+
+void Dialog::BuildEmbossPage(int lw) {
+    const int P = S(16), RH = S(30), fx = P + lw + S(8), fw = panelW_ - fx - P;
+    int y = S(4);
+    const int pg = kPageEmboss;
     AddCheck(pg, kGAlways, P, y, panelW_ - 2 * P, Str::Emboss, &Params::embossOn);
     y += RH;
     AddLabel(pg, kGAlways, P, y, Str::EmbossStyle, lw).enableRule = 2;
@@ -545,6 +588,13 @@ void Dialog::BuildSettingsPage(int lw) {
         SendMessageW(c.h, EM_LIMITTEXT, 80, 0);
     }
     AddPush(pg, kGAlways, panelW_ - P - S(100), y, S(100), S(26), IDC_PRESET_SAVE, Str::Save);
+    y += RH;
+    AddPush(pg, kGAlways, P, y, S(150), S(26), IDC_PRESET_EXPORT, Str::PresetExport);
+    AddPush(pg, kGAlways, P + S(160), y, S(150), S(26), IDC_PRESET_IMPORT, Str::PresetImport);
+    y += RH + S(20);
+    AddLabel(pg, kGAlways, P, y, Str::VersionLine, panelW_ - 2 * P);
+    y += S(30);
+    AddPush(pg, kGAlways, P, y, S(240), S(28), IDC_WEBSITE, Str::Website);
 }
 
 void Dialog::Build() {
@@ -554,7 +604,9 @@ void Dialog::Build() {
                                   Str::OffsetX, Str::OffsetY, Str::StrokeColor, Str::StrokeWidth, Str::StrokePos,
                                   Str::Opacity, Str::EmbossStyle, Str::Direction, Str::Depth, Str::EmbossSize,
                                   Str::Soften, Str::Angle, Str::Altitude, Str::Highlight, Str::Shadow,
-                                  Str::Language, Str::Theme, Str::PresetName};
+                                  Str::Language, Str::Theme, Str::PresetName, Str::TextAlign, Str::ShadowFxColor,
+                                  Str::ShadowFxAngle, Str::ShadowFxDistance, Str::ShadowFxBlur, Str::TileSpacingX,
+                                  Str::TileSpacingY, Str::TileAngle};
     HDC dc = GetDC(hwnd_);
     HGDIOBJ of = SelectObject(dc, font_);
     int lw = 0;
@@ -573,7 +625,7 @@ void Dialog::Build() {
     ctls_.reserve(300);
 
     // Zakladki
-    static const Str tabKeys[kPageCount] = {Str::TabType, Str::TabPosition, Str::TabEffects, Str::TabVisibility,
+    static const Str tabKeys[kPageCount] = {Str::TabType, Str::TabPosition, Str::TabEffects, Str::TabEmboss, Str::TabVisibility,
                                             Str::TabSettings};
     const int tw = panelW_ / kPageCount;
     for (int i = 0; i < kPageCount; ++i) {
@@ -605,6 +657,7 @@ void Dialog::Build() {
     BuildTypePage(lw);
     BuildPositionPage(lw);
     BuildEffectsPage(lw);
+    BuildEmbossPage(lw);
     BuildVisibilityPage(lw);
     BuildSettingsPage(lw);
     ReloadPresets();
@@ -660,6 +713,8 @@ bool Dialog::EnabledFor(const Ctl& c) const {
         case 5: return !ctx_.forceDirect;
         case 6: return FontHasStyle(p_.fontName, true, false);
         case 7: return FontHasStyle(p_.fontName, false, true);
+        case 8: return p_.shadowOn != 0;
+        case 9: return p_.tileOn != 0;
         default: return true;
     }
 }
@@ -848,6 +903,62 @@ void Dialog::PresetSave() {
     }
 }
 
+void Dialog::PresetExportAll() {
+    wchar_t file[MAX_PATH] = L"zetmar-presety.zmwpresets";
+    std::wstring filter = std::wstring(T(Str::FileFilterPresets)) + L'\0' + L"*.zmwpresets" + L'\0';
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd_;
+    ofn.lpstrFilter = filter.c_str();
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrDefExt = L"zmwpresets";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_EXPLORER;
+    if (!GetSaveFileNameW(&ofn)) return;
+    int count = 0;
+    if (!ExportPresets(file, count)) { ShowMessage(hwnd_, T(Str::PresetNothingToExport), *st_); return; }
+    wchar_t msg[160];
+    swprintf_s(msg, T(Str::PresetExported), count);
+    ShowMessage(hwnd_, msg, *st_);
+}
+
+void Dialog::PresetImportAll() {
+    wchar_t file[MAX_PATH] = {0};
+    std::wstring filter = std::wstring(T(Str::FileFilterPresets)) + L'\0' + L"*.zmwpresets" + L'\0';
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd_;
+    ofn.lpstrFilter = filter.c_str();
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_EXPLORER;
+    if (!GetOpenFileNameW(&ofn)) return;
+    int n = ImportPresets(file);
+    if (n < 0) { ShowMessage(hwnd_, T(Str::PresetFileBad), *st_); return; }
+    ReloadPresets();
+    wchar_t msg[160];
+    swprintf_s(msg, T(Str::PresetImported), n);
+    ShowMessage(hwnd_, msg, *st_);
+}
+
+// Dobiera biel albo czern wg sredniej jasnosci zdjecia pod ostatnio narysowanym podpisem.
+void Dialog::AutoColor() {
+    if (!haveBase_ || lastSigRect_.right <= lastSigRect_.left) { ShowMessage(hwnd_, T(Str::AutoColorHint), *st_); return; }
+    double sum = 0;
+    long long n = 0;
+    for (int y = std::max((int)lastSigRect_.top, 0); y < std::min((int)lastSigRect_.bottom, pvH_); ++y)
+        for (int x = std::max((int)lastSigRect_.left, 0); x < std::min((int)lastSigRect_.right, pvW_); ++x) {
+            const float* b = &base_.rgba[((size_t)y * pvW_ + x) * 4];
+            if (b[3] <= 0.0f) continue;
+            sum += 0.2126 * b[0] + 0.7152 * b[1] + 0.0722 * b[2];
+            ++n;
+        }
+    if (n == 0) { ShowMessage(hwnd_, T(Str::AutoColorHint), *st_); return; }
+    p_.color = sum / n > 0.5 ? 0x000000 : 0xFFFFFF;
+    UpdateStates();
+    Changed();
+}
+
 void Dialog::PresetDelete() {
     Ctl* c = Find(IDC_PRESET_COMBO);
     int i = c ? (int)SendMessageW(c->h, CB_GETCURSEL, 0, 0) : -1;
@@ -897,6 +1008,10 @@ void Dialog::OnClicked(Ctl& c) {
         case IDC_PRESET_LOAD: PresetLoad(); return;
         case IDC_PRESET_SAVE: PresetSave(); return;
         case IDC_PRESET_DEL: PresetDelete(); return;
+        case IDC_PRESET_EXPORT: PresetExportAll(); return;
+        case IDC_PRESET_IMPORT: PresetImportAll(); return;
+        case IDC_AUTOCOLOR: AutoColor(); return;
+        case IDC_WEBSITE: ShellExecuteW(hwnd_, L"open", L"https://zetmar.net.pl", nullptr, nullptr, SW_SHOWNORMAL); return;
         default: break;
     }
     if (c.kind == Kind::Tab) { SwitchPage(c.id - IDC_TAB0); for (auto& t : ctls_) if (t.kind == Kind::Tab) InvalidateRect(t.h, nullptr, TRUE); return; }
@@ -1104,7 +1219,14 @@ void Dialog::RenderPreview() {
     }
     Params q = p_;
     Sanitize(q);
-    RenderResult rr = RenderSignature(q, dc, *ctx_.ras);
+    RenderResult rr;
+    try {
+        rr = RenderSignature(q, dc, *ctx_.ras);
+    } catch (...) {
+        // Wyjatek nie moze przejsc przez petle komunikatow hosta.
+        rr.status = Status::RenderFailed;
+    }
+    lastSigRect_ = RECT{0, 0, 0, 0};
     if (rr.status != Status::Ok) {
         switch (rr.status) {
             case Status::EmptyText: pvMessage_ = T(Str::MsgEmptyText); break;
@@ -1117,21 +1239,32 @@ void Dialog::RenderPreview() {
     } else {
         const Rendered& s = rr.sig;
         const int mode = q.direct ? q.blend : (int)kBlendNormal;
-        for (int y = std::max(s.y0, 0); y < std::min(s.y0 + s.img.h, pvH_); ++y) {
-            for (int x = std::max(s.x0, 0); x < std::min(s.x0 + s.img.w, pvW_); ++x) {
-                const float* sp = s.img.px(x - s.x0, y - s.y0);
-                float sa = sp[3];
-                if (sa <= 0.0f) continue;
-                const float* bp = &base_.rgba[((size_t)y * pvW_ + x) * 4];
-                float ba = base_.merged ? 1.0f : bp[3];
-                float cs[3] = {std::min(sp[0] / sa, 1.0f), std::min(sp[1] / sa, 1.0f), std::min(sp[2] / sa, 1.0f)};
-                float oc[3], oa;
-                CompositePixel(mode, bp, ba, cs, sa, oc, oa);
-                float chk = (((x / 8) + (y / 8)) & 1) ? 0.78f : 0.62f;
-                uint8_t* o = pvBits_ + ((size_t)y * pvW_ + x) * 4;
-                for (int c = 0; c < 3; ++c) {
-                    float v = oc[c] * oa + chk * (1.0f - oa);
-                    o[2 - c] = (uint8_t)std::lround(std::min(std::max(v, 0.0f), 1.0f) * 255.0f);
+        lastSigRect_ = RECT{pvW_, pvH_, 0, 0};
+        for (const auto& org : s.origins) {
+            const int ox = org.first, oy = org.second;
+            const int y0 = std::max(oy, 0), y1 = std::min(oy + s.img.h, pvH_);
+            const int x0 = std::max(ox, 0), x1 = std::min(ox + s.img.w, pvW_);
+            if (x1 <= x0 || y1 <= y0) continue;
+            lastSigRect_.left = std::min((int)lastSigRect_.left, x0);
+            lastSigRect_.top = std::min((int)lastSigRect_.top, y0);
+            lastSigRect_.right = std::max((int)lastSigRect_.right, x1);
+            lastSigRect_.bottom = std::max((int)lastSigRect_.bottom, y1);
+            for (int y = y0; y < y1; ++y) {
+                for (int x = x0; x < x1; ++x) {
+                    const float* sp = s.img.px(x - ox, y - oy);
+                    float sa = sp[3];
+                    if (sa <= 0.0f) continue;
+                    const float* bp = &base_.rgba[((size_t)y * pvW_ + x) * 4];
+                    float ba = base_.merged ? 1.0f : bp[3];
+                    float cs[3] = {std::min(sp[0] / sa, 1.0f), std::min(sp[1] / sa, 1.0f), std::min(sp[2] / sa, 1.0f)};
+                    float oc[3], oa;
+                    CompositePixel(mode, bp, ba, cs, sa, oc, oa);
+                    float chk = (((x / 8) + (y / 8)) & 1) ? 0.78f : 0.62f;
+                    uint8_t* o = pvBits_ + ((size_t)y * pvW_ + x) * 4;
+                    for (int c = 0; c < 3; ++c) {
+                        float v = oc[c] * oa + chk * (1.0f - oa);
+                        o[2 - c] = (uint8_t)std::lround(std::min(std::max(v, 0.0f), 1.0f) * 255.0f);
+                    }
                 }
             }
         }
@@ -1330,7 +1463,7 @@ void Dialog::Rebuild() {
     ncm.lfMessageFont.lfHeight = -S(15);
     wcscpy_s(ncm.lfMessageFont.lfFaceName, L"Segoe UI");
     font_ = CreateFontIndirectW(&ncm.lfMessageFont);
-    panelW_ = S(520);
+    panelW_ = S(560);
     tabH_ = S(38);
     bottomH_ = S(60);
     SetWindowTextW(hwnd_, T(Str::Title));
@@ -1378,7 +1511,7 @@ bool Dialog::Run() {
     ncm.lfMessageFont.lfHeight = -S(15);
     wcscpy_s(ncm.lfMessageFont.lfFaceName, L"Segoe UI");
     font_ = CreateFontIndirectW(&ncm.lfMessageFont);
-    panelW_ = S(520);
+    panelW_ = S(560);
     tabH_ = S(38);
     bottomH_ = S(60);
 
@@ -1397,12 +1530,14 @@ bool Dialog::Run() {
     if (ctx_.onShown) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
 
     MSG msg;
-    while (!done_ && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    BOOL got = 1;
+    while (!done_ && (got = GetMessageW(&msg, nullptr, 0, 0)) > 0) {
         if (!IsDialogMessageW(hwnd_, &msg)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
+    if (!done_ && got == 0) PostQuitMessage((int)msg.wParam);  // host konczy prace: nie polykamy WM_QUIT
     DebugLog(L"dlg: loop ended ok=%d done=%d", (int)ok_, (int)done_);
     if (ctx_.parent) EnableWindow(ctx_.parent, TRUE);
     if (ok_) result_ = p_;

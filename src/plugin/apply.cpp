@@ -92,7 +92,10 @@ HostInfo QueryHost(FilterRecord* fr) {
                                fc == filterCaseEditableTransparencyWithSelection;
     hi.lockedTransparency = fc == filterCaseProtectedTransparencyNoSelection ||
                             fc == filterCaseProtectedTransparencyWithSelection;
-    if (editableTrans) {
+    // Host moze podac przezroczystosc, nie ustawiajac "filterCase" dla warstwy z edytowalna przezroczystoscia
+    // (inne programy niz Photoshop): wtedy ufamy licznikom plaszczyzn.
+    const bool hostHasTrans = fr->inTransparencyMask > 0 && fr->inLayerPlanes > 0 && !hi.lockedTransparency;
+    if (editableTrans || hostHasTrans) {
         if (fr->inTransparencyMask > 0 && fr->inLayerPlanes > 0) hi.transPlane = fr->inLayerPlanes;
         else if (hi.planes >= 4) hi.transPlane = 3;
         if (hi.transPlane >= hi.planes) hi.transPlane = -1;
@@ -101,11 +104,19 @@ HostInfo QueryHost(FilterRecord* fr) {
 
     hi.foreColor = ((uint32_t)fr->foreColor[0] << 16) | ((uint32_t)fr->foreColor[1] << 8) | fr->foreColor[2];
     if (fr->platformData) hi.hwnd = (HWND)((PlatformData*)fr->platformData)->hwnd;
+    if (!hi.hwnd || !IsWindow(hi.hwnd)) {
+        // Niektore programy nie podaja okna-rodzica: bierzemy aktywne okno tego samego procesu.
+        HWND fg = GetForegroundWindow();
+        DWORD pid = 0;
+        if (fg) GetWindowThreadProcessId(fg, &pid);
+        hi.hwnd = (fg && pid == GetCurrentProcessId()) ? fg : nullptr;
+    }
 
     if (fr->documentInfo && fr->documentInfo->targetCompositeChannels) {
         hi.layerOffsetX = fr->documentInfo->targetCompositeChannels->bounds.left;
         hi.layerOffsetY = fr->documentInfo->targetCompositeChannels->bounds.top;
     }
+    DebugLog(L"QueryHost: hostSig %08X ver %d", (unsigned)fr->hostSig, (int)fr->serialNumber);
     DebugLog(L"QueryHost: image %dx%d filterRect %d,%d,%d,%d depth %d planes %d filterCase %d transPlane %d "
              L"inLayerPlanes %d inTrans %d outLayerPlanes %d outTrans %d mode %d fore %06X",
              hi.imageW, hi.imageH, hi.filterRect.left, hi.filterRect.top, hi.filterRect.right, hi.filterRect.bottom,
@@ -260,6 +271,7 @@ ApplyStatus ApplySignature(FilterRecord* fr, const HostInfo& hi, const Params& p
     Sanitize(p);
     renderStatus = Status::Ok;
     hostErr = 0;
+    if (!fr->advanceState) { hostErr = filterBadParameters; return ApplyStatus::HostError; }
 
     DocContext ctx;
     ctx.docW = hi.imageW;
@@ -275,9 +287,14 @@ ApplyStatus ApplySignature(FilterRecord* fr, const HostInfo& hi, const Params& p
     }
     const Rendered& sig = rr.sig;
 
-    // Czesc wspolna podpisu i warstwy (oraz zaznaczenia: poza nim host i tak maskuje zmiany).
-    int rx0 = std::max(sig.x0, 0), ry0 = std::max(sig.y0, 0);
-    int rx1 = std::min(sig.x0 + sig.img.w, hi.imageW), ry1 = std::min(sig.y0 + sig.img.h, hi.imageH);
+    // Obwiednia wszystkich kopii podpisu (jedna albo wiele w trybie kafelkowym) przycieta do warstwy.
+    int rx0 = hi.imageW, ry0 = hi.imageH, rx1 = 0, ry1 = 0;
+    for (const auto& o : sig.origins) {
+        rx0 = std::min(rx0, std::max(o.first, 0));
+        ry0 = std::min(ry0, std::max(o.second, 0));
+        rx1 = std::max(rx1, std::min(o.first + sig.img.w, hi.imageW));
+        ry1 = std::max(ry1, std::min(o.second + sig.img.h, hi.imageH));
+    }
     if (rx1 <= rx0 || ry1 <= ry0) {
         renderStatus = Status::NothingToDraw;
         return ApplyStatus::Cancelled;
@@ -298,6 +315,7 @@ ApplyStatus ApplySignature(FilterRecord* fr, const HostInfo& hi, const Params& p
     const long long rowBytes = (long long)(rx1 - rx0) * planes * bps;
     int stripRows = (int)std::max<long long>(1, (16LL << 20) / std::max<long long>(rowBytes, 1));
     int totalRows = ry1 - ry0, doneRows = 0;
+    const size_t pixStride = (size_t)planes * bps;
 
     for (int ys = ry0; ys < ry1; ys += stripRows) {
         int ye = std::min(ys + stripRows, ry1);
@@ -306,36 +324,43 @@ ApplyStatus ApplySignature(FilterRecord* fr, const HostInfo& hi, const Params& p
         if (e != noErr) { hostErr = (short)e; ZeroRects(fr); return ApplyStatus::HostError; }
         if (!fr->inData || !fr->outData) { hostErr = filterBadParameters; ZeroRects(fr); return ApplyStatus::HostError; }
 
+        // Najpierw przepisujemy wejscie na wyjscie (reszta kanalow bez zmian), potem skladamy kolejne kopie.
         for (int y = ys; y < ye; ++y) {
             const uint8_t* inRow = (const uint8_t*)fr->inData + (ptrdiff_t)(y - ys) * fr->inRowBytes;
             uint8_t* outRow = (uint8_t*)fr->outData + (ptrdiff_t)(y - ys) * fr->outRowBytes;
-            const size_t pixStride = (size_t)planes * bps;
-            std::memcpy(outRow, inRow, (size_t)(rx1 - rx0) * pixStride);  // reszta kanalow bez zmian
-            for (int x = rx0; x < rx1; ++x) {
-                const float* s = sig.img.px(x - sig.x0, y - sig.y0);
-                float sa = s[3];
-                if (sa <= 0.0f) continue;
-                const uint8_t* ip = inRow + (size_t)(x - rx0) * pixStride;
-                uint8_t* op = outRow + (size_t)(x - rx0) * pixStride;
-                float cb[3], ab = 1.0f;
-                if (bps == 1) {
-                    for (int c = 0; c < 3; ++c) cb[c] = ip[c] / maxv;
-                    if (hi.transPlane >= 0) ab = ip[hi.transPlane] / maxv;
-                } else {
-                    const uint16_t* i16 = (const uint16_t*)ip;
-                    for (int c = 0; c < 3; ++c) cb[c] = std::min(i16[c] / maxv, 1.0f);
-                    if (hi.transPlane >= 0) ab = std::min(i16[hi.transPlane] / maxv, 1.0f);
-                }
-                float cs[3] = {std::min(s[0] / sa, 1.0f), std::min(s[1] / sa, 1.0f), std::min(s[2] / sa, 1.0f)};
-                float oc[3], oa;
-                CompositePixel(mode, cb, ab, cs, sa, oc, oa);
-                if (bps == 1) {
-                    for (int c = 0; c < 3; ++c) op[c] = RoundClamp<uint8_t>(oc[c], maxv);
-                    if (hi.transPlane >= 0) op[hi.transPlane] = RoundClamp<uint8_t>(oa, maxv);
-                } else {
-                    uint16_t* o16 = (uint16_t*)op;
-                    for (int c = 0; c < 3; ++c) o16[c] = RoundClamp<uint16_t>(oc[c], maxv);
-                    if (hi.transPlane >= 0) o16[hi.transPlane] = RoundClamp<uint16_t>(oa, maxv);
+            std::memcpy(outRow, inRow, (size_t)(rx1 - rx0) * pixStride);
+        }
+        for (const auto& o : sig.origins) {
+            const int tx0 = std::max(o.first, rx0), tx1 = std::min(o.first + sig.img.w, rx1);
+            const int ty0 = std::max(o.second, ys), ty1 = std::min(o.second + sig.img.h, ye);
+            if (tx1 <= tx0 || ty1 <= ty0) continue;
+            for (int y = ty0; y < ty1; ++y) {
+                uint8_t* outRow = (uint8_t*)fr->outData + (ptrdiff_t)(y - ys) * fr->outRowBytes;
+                for (int x = tx0; x < tx1; ++x) {
+                    const float* s = sig.img.px(x - o.first, y - o.second);
+                    float sa = s[3];
+                    if (sa <= 0.0f) continue;
+                    uint8_t* op = outRow + (size_t)(x - rx0) * pixStride;  // wejscie = biezacy stan wyjscia
+                    float cb[3], ab = 1.0f;
+                    if (bps == 1) {
+                        for (int c = 0; c < 3; ++c) cb[c] = op[c] / maxv;
+                        if (hi.transPlane >= 0) ab = op[hi.transPlane] / maxv;
+                    } else {
+                        const uint16_t* i16 = (const uint16_t*)op;
+                        for (int c = 0; c < 3; ++c) cb[c] = std::min(i16[c] / maxv, 1.0f);
+                        if (hi.transPlane >= 0) ab = std::min(i16[hi.transPlane] / maxv, 1.0f);
+                    }
+                    float cs[3] = {std::min(s[0] / sa, 1.0f), std::min(s[1] / sa, 1.0f), std::min(s[2] / sa, 1.0f)};
+                    float oc[3], oa;
+                    CompositePixel(mode, cb, ab, cs, sa, oc, oa);
+                    if (bps == 1) {
+                        for (int c = 0; c < 3; ++c) op[c] = RoundClamp<uint8_t>(oc[c], maxv);
+                        if (hi.transPlane >= 0) op[hi.transPlane] = RoundClamp<uint8_t>(oa, maxv);
+                    } else {
+                        uint16_t* o16 = (uint16_t*)op;
+                        for (int c = 0; c < 3; ++c) o16[c] = RoundClamp<uint16_t>(oc[c], maxv);
+                        if (hi.transPlane >= 0) o16[hi.transPlane] = RoundClamp<uint16_t>(oa, maxv);
+                    }
                 }
             }
         }

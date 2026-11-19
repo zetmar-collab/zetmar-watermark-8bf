@@ -32,7 +32,7 @@ bool ReadWholeFile(const std::wstring& path, std::string& out) {
 
 // Zapis przez plik tymczasowy, zeby przerwany zapis nie zostawil uszkodzonego pliku.
 bool WriteFileAtomic(const std::wstring& path, const std::string& data) {
-    std::wstring tmp = path + L".tmp";
+    std::wstring tmp = path + L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
     HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
     DWORD wrote = 0;
@@ -69,13 +69,15 @@ int GetInt(const std::string& json, const char* key, int def) {
 // Koniec obiektu JSON zaczynajacego sie w `b` ('{'), z pominieciem nawiasow w napisach.
 size_t ObjectEnd(const std::string& j, size_t b) {
     bool inStr = false;
+    int depth = 0;
     for (size_t i = b; i < j.size(); ++i) {
-        char c = j[i];
+        char ch = j[i];
         if (inStr) {
-            if (c == '\\') ++i;
-            else if (c == '"') inStr = false;
-        } else if (c == '"') inStr = true;
-        else if (c == '}') return i;
+            if (ch == '\\') ++i;
+            else if (ch == '"') inStr = false;
+        } else if (ch == '"') inStr = true;
+        else if (ch == '{') ++depth;
+        else if (ch == '}' && --depth == 0) return i;
     }
     return std::string::npos;
 }
@@ -105,6 +107,10 @@ std::wstring GetString(const std::string& json, const char* key) {
 }  // namespace
 
 std::wstring DataDir() {
+    // Testy podmieniaja katalog danych, zeby nie dotykac prawdziwych ustawien uzytkownika.
+    wchar_t over[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"ZETMAR_WM_DATA", over, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) return over;
     wchar_t buf[MAX_PATH];
     if (FAILED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, buf))) return L"";
     return std::wstring(buf) + L"\\ZetmarWatermark";
@@ -160,6 +166,15 @@ std::wstring SanitizePresetName(const std::wstring& name) {
     size_t b = r.find_first_not_of(L' ');
     r = b == std::wstring::npos ? L"" : r.substr(b);
     if (r.size() > 80) r.resize(80);
+    // Zarezerwowane nazwy urzadzen Windows (CON, NUL, COM1...) nie moga byc nazwami plikow.
+    std::wstring up = r;
+    for (auto& ch : up) ch = (wchar_t)towupper(ch);
+    size_t dot = up.find(L'.');
+    if (dot != std::wstring::npos) up.resize(dot);
+    static const wchar_t* kReserved[] = {L"CON", L"PRN", L"AUX", L"NUL"};
+    for (const wchar_t* rs : kReserved) if (up == rs) return L"";
+    if (up.size() == 4 && (up.compare(0, 3, L"COM") == 0 || up.compare(0, 3, L"LPT") == 0) && up[3] >= L'0' && up[3] <= L'9')
+        return L"";
     return r;
 }
 
@@ -207,6 +222,49 @@ bool DeletePreset(const std::wstring& name) {
     std::wstring n = SanitizePresetName(name);
     if (n.empty()) return false;
     return DeleteFileW((PresetsDir() + L"\\" + n + L".json").c_str()) != 0;
+}
+
+bool ExportPresets(const std::wstring& path, int& count) {
+    count = 0;
+    std::string j = "{\n  \"zetmarPresets\": 1,\n  \"presets\": [";
+    for (const auto& name : ListPresets()) {
+        Params p;
+        if (!LoadPreset(name, p)) continue;
+        j += count ? ",\n    " : "\n    ";
+        j += "{\"name\": \"" + EscapeJson(WideToUtf8(name)) + "\", \"params\": " + ToJson(p) + "}";
+        ++count;
+    }
+    j += "\n  ]\n}\n";
+    return count > 0 && WriteFileAtomic(path, j);
+}
+
+int ImportPresets(const std::wstring& path) {
+    std::string json;
+    if (!ReadWholeFile(path, json)) return -1;
+    size_t pos = json.find("\"presets\"");
+    if (pos == std::string::npos || json.find("\"zetmarPresets\"") == std::string::npos) return -1;
+    pos = json.find('[', pos);
+    if (pos == std::string::npos) return -1;
+    int imported = 0;
+    ++pos;
+    while (true) {
+        size_t b = json.find('{', pos);
+        if (b == std::string::npos) break;
+        size_t e = ObjectEnd(json, b);
+        if (e == std::string::npos) break;
+        std::string obj = json.substr(b, e - b + 1);
+        pos = e + 1;
+        std::wstring name = GetString(obj, "name");
+        size_t pp = obj.find("\"params\"");
+        size_t pb = pp == std::string::npos ? pp : obj.find('{', pp);
+        if (name.empty() || pb == std::string::npos) continue;
+        size_t pe = ObjectEnd(obj, pb);
+        if (pe == std::string::npos) continue;
+        Params p;
+        SetDefaults(p);
+        if (FromJson(obj.substr(pb, pe - pb + 1), p) && SavePreset(name, p)) ++imported;
+    }
+    return imported;
 }
 
 }  // namespace wm
