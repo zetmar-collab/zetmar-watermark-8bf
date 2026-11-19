@@ -399,6 +399,11 @@ static void TestPresetBundle() {
     CHECK(LoadPreset(L"_bundle2", rb) && rb.shadowOn == 1 && rb.tileOn == 1);
     DeletePreset(L"_bundle1"); DeletePreset(L"_bundle2");
     CHECK(ImportPresets(L"C:\\nie\\ma\\pliku.zmwpresets") == -1);
+    CHECK(IsLocalDrivePath(L"C:\\Users\\a\\logo.png") && IsLocalDrivePath(L"d:/x/y.png"));
+    CHECK(!IsLocalDrivePath(L"\\\\srv\\share\\a.png") && !IsLocalDrivePath(L"//srv/share/a.png") &&
+          !IsLocalDrivePath(L"\\\\?\\C:\\a.png") && !IsLocalDrivePath(L"\\\\.\\PhysicalDrive0") &&
+          !IsLocalDrivePath(L"\\??\\C:\\a.png") && !IsLocalDrivePath(L"C:\\a\\\\b.png") &&
+          !IsLocalDrivePath(L"rel\\a.png") && !IsLocalDrivePath(L"C:a.png") && !IsLocalDrivePath(L""));
     // Import: sciezka UNC jest czyszczona, a istniejacy preset nie jest nadpisywany
     {
         Params u; SetDefaults(u); wcscpy_s(u.imagePath, L"\\\\serwer\\udzial\\logo.png"); u.visibility = 11;

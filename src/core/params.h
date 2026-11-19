@@ -90,6 +90,8 @@ void SetDefaults(Params& p);
 // Przycina wartosci do dozwolonych zakresow, naprawia magic/version i terminatory napisow.
 void Sanitize(Params& p);
 bool IsValid(const Params& p);
+// Czy to zwykla sciezka lokalna "X:\\...": bez UNC, \\?\, \\.\ i podwojnych separatorow.
+bool IsLocalDrivePath(const wchar_t* path);
 
 // JSON (UTF-8). Parse zwraca false tylko dla niepoprawnej skladni; nieznane/brakujace klucze
 // zostawiaja wartosci z `p` (wywolujacy ustawia wczesniej SetDefaults).

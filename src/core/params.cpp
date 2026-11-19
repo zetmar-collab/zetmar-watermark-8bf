@@ -89,6 +89,15 @@ static int32_t ClampI(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : 
 template <size_t N>
 static void Terminate(wchar_t (&a)[N]) { a[N - 1] = 0; }
 
+bool IsLocalDrivePath(const wchar_t* path) {
+    // Tylko "X:\..." albo "X:/...". Odrzuca UNC (\\serwer), \\?\ , \\.\ , \??\ i sciezki wzgledne.
+    if (!((path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z'))) return false;
+    if (path[1] != L':' || (path[2] != L'\\' && path[2] != L'/')) return false;
+    for (const wchar_t* s = path + 3; *s; ++s)
+        if ((s[0] == L'\\' || s[0] == L'/') && (s[1] == L'\\' || s[1] == L'/')) return false;
+    return true;
+}
+
 void Sanitize(Params& p) {
     p.magic = kParamsMagic;
     p.version = kParamsVersion;
@@ -373,6 +382,9 @@ bool FromJson(const std::string& json, Params& p) {
     if (!parser.parse(r.kv)) return false;
     Visit(p, r);
     Sanitize(p);
+    // Plik spoza programu (preset, ustawienia) nie moze wskazac zasobu sieciowego ani urzadzenia:
+    // otwarcie takiej sciezki wyslaloby dane logowania Windows. Obraz trzeba wskazac w oknie ponownie.
+    if (p.imagePath[0] && !IsLocalDrivePath(p.imagePath)) p.imagePath[0] = 0;
     return true;
 }
 

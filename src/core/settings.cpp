@@ -31,7 +31,7 @@ bool ReadWholeFile(const std::wstring& path, std::string& out) {
 }
 
 // Zapis przez plik tymczasowy, zeby przerwany zapis nie zostawil uszkodzonego pliku.
-bool WriteFileAtomic(const std::wstring& path, const std::string& data) {
+bool WriteFileAtomic(const std::wstring& path, const std::string& data, bool replace = true) {
     std::wstring tmp = path + L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
     HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
@@ -39,7 +39,7 @@ bool WriteFileAtomic(const std::wstring& path, const std::string& data) {
     bool ok = WriteFile(h, data.data(), (DWORD)data.size(), &wrote, nullptr) && wrote == data.size();
     CloseHandle(h);
     if (!ok) { DeleteFileW(tmp.c_str()); return false; }
-    if (!MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) { DeleteFileW(tmp.c_str()); return false; }
+    if (!MoveFileExW(tmp.c_str(), path.c_str(), replace ? MOVEFILE_REPLACE_EXISTING : 0)) { DeleteFileW(tmp.c_str()); return false; }
     return true;
 }
 
@@ -218,15 +218,19 @@ bool SavePreset(const std::wstring& name, const Params& p) {
     return WriteFileAtomic(PresetsDir() + L"\\" + n + L".json", ToJson(p));
 }
 
+// Zapis tylko do nowego pliku: istnienie i zapis sprawdza jedna operacja systemu (bez wyscigu).
+static bool SavePresetNew(const std::wstring& sanitizedName, const Params& p) {
+    std::wstring dir = DataDir();
+    if (sanitizedName.empty() || dir.empty()) return false;
+    CreateDirectoryW(dir.c_str(), nullptr);
+    CreateDirectoryW((dir + L"\\presets").c_str(), nullptr);
+    return WriteFileAtomic(PresetsDir() + L"\\" + sanitizedName + L".json", ToJson(p), false);
+}
+
 bool DeletePreset(const std::wstring& name) {
     std::wstring n = SanitizePresetName(name);
     if (n.empty()) return false;
     return DeleteFileW((PresetsDir() + L"\\" + n + L".json").c_str()) != 0;
-}
-
-bool IsRemoteOrDevicePath(const wchar_t* path) {
-    // \\serwer\udzial, \\?\..., \\.\... oraz //serwer
-    return (path[0] == L'\\' || path[0] == L'/') && (path[1] == L'\\' || path[1] == L'/');
 }
 
 bool PresetExists(const std::wstring& name) {
@@ -276,13 +280,14 @@ int ImportPresets(const std::wstring& path) {
         if (!FromJson(obj.substr(pb, pe - pb + 1), p)) continue;
         // Plik z zewnatrz nie moze sklonic wtyczki do otwarcia zasobu sieciowego (UNC) ani urzadzenia:
         // taka sciezka wyciekaloby dane logowania Windows. Uzytkownik wskaze obraz ponownie.
-        if (IsRemoteOrDevicePath(p.imagePath)) p.imagePath[0] = 0;
-        // Istniejacych presetow nie nadpisujemy po cichu.
-        std::wstring finalName = name;
-        for (int n = 2; PresetExists(finalName) && n < 100; ++n)
-            finalName = name + L" (import " + std::to_wstring(n - 1) + L")";
-        if (PresetExists(finalName)) continue;
-        if (SavePreset(finalName, p)) ++imported;
+        // Istniejacych presetow nie nadpisujemy: kandydaci sa najpierw normalizowani tak samo jak przy zapisie,
+        // a zapis odmawia, jesli plik juz jest.
+        const std::wstring baseName = SanitizePresetName(name);
+        if (baseName.empty()) continue;
+        bool saved = SavePresetNew(baseName, p);
+        for (int n = 1; !saved && n < 100; ++n)
+            saved = SavePresetNew(SanitizePresetName(baseName + L" (import " + std::to_wstring(n) + L")"), p);
+        if (saved) ++imported;
     }
     return imported;
 }
